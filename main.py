@@ -10,80 +10,6 @@ from google.oauth2 import service_account
 from googletrans import Translator
 
 
-def on_click(x, y, button, pressed):
-    print('{0} {1} at {2}'.format(
-        button, 'Pressed' if pressed else 'Released', (x, y)))
-
-    if (button == mouse.Button.left):
-        if (pressed):
-            global left, top
-            left = x
-            top = y
-        else:
-            global right, bottom
-            right = x
-            bottom = y
-            box = (min(left, right), min(top, bottom),
-                   max(left, right), max(top, bottom))
-            takeimage(box)
-            return False
-
-
-def takeimage(box):
-    im = ImageGrab.grab(box, False, True, None)
-    im.save('image.png')
-
-
-def updateimage(window):
-    im = Image.open('image.png').resize(imagesize)
-    bio = io.BytesIO()
-    im.save(bio, format='png')
-    window['image'].update(data=bio.getvalue(), size=imagesize)
-
-
-def updatetext(window, text):
-    window['text'].update(text)
-
-
-def updategoogle(window, text):
-    translator = Translator()
-    text = translator.translate(text, dest='en').text
-    window['google'].update(text)
-
-
-def updatedeepl(window, text):
-    translator = deepl.Translator(deepl_key.get('key'))
-    text = translator.translate_text(text, target_lang='en-us')
-    window['deepl'].update(text)
-
-
-def readimage():
-    with io.open('image.png', 'rb') as image_file:
-        content = image_file.read()
-    image = vision.Image(content=content)
-    response = client.document_text_detection(
-        image=image, image_context=vision.ImageContext())
-
-    fulltext = ''
-    for page in response.full_text_annotation.pages:
-        for block in page.blocks:
-            # print('\nBlock confidence: {}\n'.format(block.confidence))
-            for paragraph in block.paragraphs:
-                # print('Paragraph confidence: {}'.format(paragraph.confidence))
-                for word in paragraph.words:
-                    word_text = ''.join([
-                        symbol.text for symbol in word.symbols
-                    ])
-                    # print('Word text: {} (confidence: {})'.format(
-                    #     word_text, word.confidence))
-                    # for symbol in word.symbols:
-                    #     print('\tSymbol: {} (confidence: {})'.format(
-                    #         symbol.text, symbol.confidence))
-                    fulltext = fulltext + word_text + ' '
-    pyperclip.copy(fulltext)
-    return fulltext
-
-
 credentials = service_account.Credentials.from_service_account_file(
     'keys.json')
 client = vision.ImageAnnotatorClient(credentials=credentials)
@@ -93,6 +19,7 @@ deepl_key = json.load(f)
 f.close()
 
 imagesize = (500, 500)
+screensize = (1920, 1080)
 
 leftcolumn = [[sg.Image(size=imagesize, key='image')],
               [sg.Button('Snap', size=(62, 2), key='snap')],
@@ -110,19 +37,78 @@ layout = [[sg.Column(leftcolumn), sg.Column(rightcolumn)]]
 window = sg.Window('Auto Translate', layout,
                    size=(1200, 900), keep_on_top=False)
 
+
+def onclick(x, y, button, pressed):
+    # print('{0} {1} at {2}'.format(
+    #     button, 'Pressed' if pressed else 'Released', (x, y)))
+    if (button == mouse.Button.left):
+        if (pressed):
+            global left, top
+            left = x
+            top = y
+        else:
+            global right, bottom
+            right = x
+            bottom = y
+            box = (min(left, right), min(top, bottom),
+                   max(left, right), max(top, bottom))
+
+            ImageGrab.grab(box, False, True, None).save('image.png')
+            return False
+
+
+def snap():
+    window.disappear()
+
+    canvas = sg.Window('fullscreen', layout=[
+        []], size=screensize, alpha_channel=0.01, no_titlebar=True, keep_on_top=True, finalize=True)
+    canvas.maximize()
+    with mouse.Listener(on_click=onclick) as listener:
+        listener.join()
+
+    canvas.close()
+    window.reappear()
+
+    content = io.open('image.png', 'rb').read()
+    image = vision.Image(content=content)
+    response = client.document_text_detection(
+        image=image, image_context=vision.ImageContext())
+
+    text = ''
+    for page in response.full_text_annotation.pages:
+        for block in page.blocks:
+            for paragraph in block.paragraphs:
+                for word in paragraph.words:
+                    word_text = ''.join([
+                        symbol.text for symbol in word.symbols
+                    ])
+                    text = text + word_text + ' '
+
+    if (text):
+        pyperclip.copy(text)
+
+        im = Image.open('image.png').resize(imagesize)
+        bio = io.BytesIO()
+        im.save(bio, 'png')
+        window['image'].update(data=bio.getvalue(), size=imagesize)
+
+        window['text'].update(text)
+
+        googletranslate = Translator()
+        text = googletranslate.translate(text, dest='en').text
+        window['google'].update(text)
+
+        deepltranslate = deepl.Translator(deepl_key.get('key'))
+        text = deepltranslate.translate_text(text, target_lang='en-us')
+        window['deepl'].update(text)
+
+
 while True:
     event, values = window.read()
     if event == sg.WIN_CLOSED or event == 'Cancel':
         break
     if event == 'snap':
-        with mouse.Listener(on_click=on_click) as listener:
-            listener.join()
-        text = readimage()
-        if (text):
-            updateimage(window)
-            updatetext(window, text)
-            updategoogle(window, text)
-            updatedeepl(window, text)
+        snap()
     if event == 'textcopy':
         pyperclip.copy(values['text'])
     if event == 'googlecopy':
