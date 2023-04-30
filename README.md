@@ -5,8 +5,8 @@ A program to quickly translate anything on your screen into English. Works like 
 ### Requirements
 
 - DeepL
-- Google API
-- Googletrans
+- Google Cloud Vision (needs virtualenv)
+- Googletrans 4.0.0rc1
 - pynput
 - pyperclip
 - PySimpleGUI
